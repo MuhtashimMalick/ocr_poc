@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Text Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        .app-container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            /* height: 300px; */
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #f8f9fa;
+        }
+
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .scan-overlay::before,
+        .scan-overlay::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(2px);
+        }
+
+        .scan-overlay::before {
+            top: 0;
+            height: 40%;
+        }
+
+        .scan-overlay::after {
+            bottom: 0;
+            height: 40%;
+        }
+
+        .scan-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 40%;
+            height: 20%;
+            border: 2px solid #667eea;
+            border-left: none;
+            border-right: none;
+            background: rgba(102, 126, 234, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .scan-line::before {
+            content: 'Place menu item here';
+            color: #667eea;
+            font-size: 14px;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 4px 12px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.8;
+            }
+
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .capture-btn,
+        .download-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .download-btn {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+        }
+
+        .capture-btn:hover,
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+        }
+
+        .download-btn:hover {
+            box-shadow: 0 12px 35px rgba(40, 167, 69, 0.4);
+        }
+
+        .capture-btn:disabled,
+        .download-btn:disabled {
+            background: #e9ecef;
+            color: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        #status {
+            padding: 12px 20px;
+            margin: 15px 0;
+            border-radius: 10px;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .status-info {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            color: #1976d2;
+        }
+
+        .status-success {
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+            color: #388e3c;
+        }
+
+        .status-error {
+            background: linear-gradient(135deg, #ffebee, #ffcdd2);
+            color: #d32f2f;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            border-radius: 3px;
+        }
+
+        #results {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            text-align: left;
+            white-space: pre-wrap;
+            min-height: 120px;
+            border: 1px solid #e9ecef;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #495057;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+        }
+
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid transparent;
+            border-top: 2px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .app-container {
+                padding: 20px;
+                margin: 10px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            #video {
+                height: 250px;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            .capture-btn,
+            .download-btn {
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <h1>Text Scanner</h1>
+
+        <div id="status" class="status-info">
+            Initializing camera...
+        </div>
+
+        <div class="progress-container" id="progressContainer" style="display: none;">
+            <div class="progress-fill" id="progressBar"></div>
+        </div>
+
+        <div class="video-container">
+            <video id="video" autoplay playsinline muted></video>
+            <div class="scan-overlay">
+                <div class="scan-line"></div>
+            </div>
+        </div>
+
+        <div class="loading-spinner" id="loadingSpinner"></div>
+
+        <div class="button-group">
+            <button onclick="captureAndProcess()" id="captureBtn" class="capture-btn" disabled>
+                Scan Text
+            </button>
+            <button onclick="downloadScanArea()" id="downloadBtn" class="download-btn" disabled>
+                Download Scan Area
+            </button>
+        </div>
+
+        <div id="results">Ready to scan text from camera...</div>
+    </div>
+
+    <script>
+        let video;
+        let stream;
+        let lastScanCanvas = null; // Store the last scan area for download
+
+        // Auto-start camera when page loads
+        window.onload = function () {
+            startCamera();
+        };
+
+        async function startCamera() {
+            try {
+                updateStatus('Starting camera...', 'info');
+
+                // First try to get the highest resolution available
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'environment',
+                            width: { min: 1280, ideal: 1920, max: 4096 },
+                            height: { min: 720, ideal: 1080, max: 2160 }
+                        }
+                    });
+                } catch (highResError) {
+                    // If high resolution fails, try medium resolution
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: {
+                                facingMode: 'environment',
+                                width: { min: 854, ideal: 1280, max: 1920 },
+                                height: { min: 480, ideal: 720, max: 1080 }
+                            }
+                        });
+                    } catch (mediumResError) {
+                        // Fallback to basic resolution if all else fails
+                        stream = await navigator.mediaDevices.getUserMedia({
+                            video: {
+                                facingMode: 'environment',
+                                width: { ideal: 640 },
+                                height: { ideal: 480 }
+                            }
+                        });
+                    }
+                }
+
+                video = document.getElementById('video');
+                video.srcObject = stream;
+
+                video.onloadedmetadata = () => {
+                    const track = stream.getVideoTracks()[0];
+                    const settings = track.getSettings();
+                    updateStatus(`Ready to scan (${settings.width}x${settings.height})`, 'success');
+                    document.getElementById('captureBtn').disabled = false;
+                    document.getElementById('downloadBtn').disabled = false;
+                };
+
+            } catch (err) {
+                updateStatus('Camera access denied or unavailable', 'error');
+                document.getElementById('results').textContent = 'Please allow camera access or try using HTTPS';
+                console.error('Camera error:', err);
+            }
+        }
+
+        function createScanAreaCanvas() {
+            if (!video) {
+                console.error('Video not available');
+                return null;
+            }
+
+            // Create canvas from video
+            const canvas = document.createElement('canvas');
+
+            // Set canvas to video's actual dimensions
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+
+            // Draw the full video frame
+            ctx.drawImage(video, 0, 0);
+
+            const totalH = canvas.height;
+            const scanAreaTop = totalH * 0.45; // 40% down from the top 
+            const scanAreaHeight = totalH * 0.1; // 20% of the height
+
+            // Create a new canvas with just the scan area
+            const scanCanvas = document.createElement('canvas');
+            scanCanvas.width = canvas.width;
+            scanCanvas.height = scanAreaHeight;
+            const scanCtx = scanCanvas.getContext('2d');
+
+            // Fill with white background first to ensure clean extraction
+            scanCtx.fillStyle = 'white';
+            scanCtx.fillRect(0, 0, scanCanvas.width, scanCanvas.height);
+
+            // Draw only the specific scan area from the original canvas
+            console.log('Drawing from source:', 0, scanAreaTop, canvas.width, scanAreaHeight);
+            console.log('Drawing to dest:', 0, 0, canvas.width, scanAreaHeight);
+
+
+            scanCtx.drawImage(
+                canvas,
+                0, scanAreaTop,         // source x=0, y=40% down
+                canvas.width, scanAreaHeight,  // source width=full, height=20%
+                0, 0,                    // dest x=0, y=0 on scanCtx
+                canvas.width, scanAreaHeight   // dest width & height same as source
+            );
+
+            // Store for potential download
+            lastScanCanvas = scanCanvas;
+
+            return scanCanvas;
+        }
+
+        async function captureAndProcess() {
+            const scanCanvas = createScanAreaCanvas();
+            if (!scanCanvas) {
+                updateStatus('Camera not available', 'error');
+                return;
+            }
+
+            await processImage(scanCanvas);
+        }
+
+        function downloadScanArea() {
+            const scanCanvas = createScanAreaCanvas();
+            if (!scanCanvas) {
+                updateStatus('Camera not available', 'error');
+                return;
+            }
+
+            // Convert canvas to blob and download
+            scanCanvas.toBlob(function (blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `scan-area-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                updateStatus('Scan area downloaded', 'success');
+            }, 'image/png');
+        }
+
+        async function processImage(canvas) {
+            try {
+                updateStatus('Scanning text...', 'info');
+                showProgress(0);
+                showSpinner(true);
+                document.getElementById('captureBtn').disabled = true;
+
+                const result = await Tesseract.recognize(canvas, 'eng', {
+                    logger: function (m) {
+                        if (m.status === 'recognizing text') {
+                            const progress = Math.round(m.progress * 100);
+                            showProgress(progress);
+                            updateStatus(`Processing: ${progress}%`, 'info');
+                        }
+                    }
+                });
+
+                hideProgress();
+                showSpinner(false);
+                document.getElementById('captureBtn').disabled = false;
+
+                const detectedText = result.data.text.trim();
+
+                if (detectedText) {
+                    updateStatus('Text detected successfully', 'success');
+                    displayResults(detectedText, result.data);
+                } else {
+                    updateStatus('No text detected', 'error');
+                    document.getElementById('results').textContent = 'No text found. Try adjusting the camera angle or lighting.';
+                }
+
+            } catch (error) {
+                hideProgress();
+                showSpinner(false);
+                document.getElementById('captureBtn').disabled = false;
+                document.getElementById('downloadBtn').disabled = false;
+                updateStatus('Scanning failed', 'error');
+                console.error('OCR Error:', error);
+            }
+        }
+
+        function displayResults(text, data) {
+            const resultsDiv = document.getElementById('results');
+
+            let output = `${text}\n\n`;
+            output += `Confidence: ${Math.round(data.confidence)}%`;
+
+            if (data.words && data.words.length > 0) {
+                const validWords = data.words.filter(word => word.text.trim());
+                if (validWords.length > 0) {
+                    output += `\n\nWords found: ${validWords.length}`;
+                }
+            }
+
+            resultsDiv.textContent = output;
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status-${type}`;
+        }
+
+        function showProgress(percent) {
+            const container = document.getElementById('progressContainer');
+            const bar = document.getElementById('progressBar');
+            container.style.display = 'block';
+            bar.style.width = percent + '%';
+        }
+
+        function hideProgress() {
+            document.getElementById('progressContainer').style.display = 'none';
+        }
+
+        function showSpinner(show) {
+            const spinner = document.getElementById('loadingSpinner');
+            spinner.style.display = show ? 'block' : 'none';
+        }
+
+        // Clean up camera when page unloads
+        window.addEventListener('beforeunload', function () {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+
+</html>
