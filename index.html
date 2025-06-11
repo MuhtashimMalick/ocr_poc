@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OCR Text Scanner</title>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script src="static/js/tesseract.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -53,6 +53,9 @@
             overflow: hidden;
             margin-bottom: 20px;
             box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            /* Prevent stretching on iOS bounce scroll */
+            transform: translateZ(0);
+            backface-visibility: hidden;
         }
 
         #video {
@@ -70,8 +73,12 @@
             bottom: 0;
             pointer-events: none;
             z-index: 2;
+            /* Ensure overlay covers stretched container */
+            min-height: 100%;
+            transform: translateZ(0);
         }
 
+        /* Top and bottom blur areas with extended coverage */
         .scan-overlay::before,
         .scan-overlay::after {
             content: '';
@@ -80,22 +87,65 @@
             right: 0;
             background: rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(2px);
+            /* Extend blur areas to cover stretching */
+            /* min-height: 45%; */
         }
 
         .scan-overlay::before {
             top: 0;
             height: 40%;
+            /* Extend upward to cover any stretch */
+            /* margin-top: -10px; */
+            /* padding-top: 10px; */
         }
 
         .scan-overlay::after {
             bottom: 0;
             height: 40%;
+            /* Extend downward to cover any stretch */
+            /* margin-bottom: -10px;
+            padding-bottom: 10px; */
+        }
+
+        /* Left and right blur areas for the middle section */
+        .scan-overlay-sides {
+            position: absolute;
+            top: 39%;
+            /* Slightly overlap with top/bottom */
+            bottom: 39%;
+            /* Slightly overlap with top/bottom */
+            left: 0;
+            right: 0;
+            pointer-events: none;
+            z-index: 1;
+            transform: translateZ(0);
+        }
+
+        .scan-overlay-sides::before,
+        .scan-overlay-sides::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 25%;
+            background: rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(2px);
+            /* Extend to cover stretching */
+            min-height: 100%;
+        }
+
+        .scan-overlay-sides::before {
+            left: 0;
+        }
+
+        .scan-overlay-sides::after {
+            right: 0;
         }
 
         .scan-line {
             position: absolute;
-            left: 0;
-            right: 0;
+            left: 25%;
+            right: 25%;
             top: 40%;
             height: 20%;
             border: 2px solid #667eea;
@@ -105,7 +155,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            animation: pulse 2s ease-in-out infinite;
+            animation: pulse 5s ease-in-out 1 forwards;
+            z-index: 3;
+            transform: translateZ(0);
         }
 
         .scan-line::before {
@@ -120,14 +172,24 @@
         }
 
         @keyframes pulse {
+            0% {
+                opacity: 0.1;
+            }
 
-            0%,
-            100% {
-                opacity: 0.8;
+            25% {
+                opacity: 0.3;
             }
 
             50% {
-                opacity: 1;
+                opacity: 0.5;
+            }
+
+            75% {
+                opacity: 0.7;
+            }
+
+            100% {
+                opacity: 0;
             }
         }
 
@@ -295,6 +357,7 @@
         <div class="video-container">
             <video id="video" autoplay playsinline muted></video>
             <div class="scan-overlay">
+                <div class="scan-overlay-sides"></div>
                 <div class="scan-line"></div>
             </div>
         </div>
@@ -393,13 +456,18 @@
             // Draw the full video frame
             ctx.drawImage(video, 0, 0);
 
+            const totalW = canvas.width;
             const totalH = canvas.height;
-            const scanAreaTop = totalH * 0.45; // 40% down from the top 
-            const scanAreaHeight = totalH * 0.1; // 20% of the height
+
+            // Match the CSS scan-line positioning
+            const scanAreaLeft = totalW * 0.25;     // 25% from left
+            const scanAreaWidth = totalW * 0.5;
+            const scanAreaTop = totalH * 0.45; // 45% down from the top 
+            const scanAreaHeight = totalH * 0.1; // 10% of the height
 
             // Create a new canvas with just the scan area
             const scanCanvas = document.createElement('canvas');
-            scanCanvas.width = canvas.width;
+            scanCanvas.width = scanAreaWidth;        // Only the width of the green box
             scanCanvas.height = scanAreaHeight;
             const scanCtx = scanCanvas.getContext('2d');
 
@@ -407,17 +475,12 @@
             scanCtx.fillStyle = 'white';
             scanCtx.fillRect(0, 0, scanCanvas.width, scanCanvas.height);
 
-            // Draw only the specific scan area from the original canvas
-            console.log('Drawing from source:', 0, scanAreaTop, canvas.width, scanAreaHeight);
-            console.log('Drawing to dest:', 0, 0, canvas.width, scanAreaHeight);
-
-
             scanCtx.drawImage(
                 canvas,
-                0, scanAreaTop,         // source x=0, y=40% down
-                canvas.width, scanAreaHeight,  // source width=full, height=20%
-                0, 0,                    // dest x=0, y=0 on scanCtx
-                canvas.width, scanAreaHeight   // dest width & height same as source
+                scanAreaLeft, scanAreaTop,           // source: start from 25% left, 40% top
+                scanAreaWidth, scanAreaHeight,       // source: 50% width, 20% height
+                0, 0,                               // dest: top-left of scanCanvas
+                scanAreaWidth, scanAreaHeight        // dest: same dimensions
             );
 
             // Store for potential download
