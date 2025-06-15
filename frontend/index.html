@@ -522,30 +522,44 @@
 
         async function processImage(canvas) {
             try {
-                updateStatus('Scanning text...', 'info');
+                updateStatus('Uploading image for OCR...', 'info');
                 showProgress(0);
                 showSpinner(true);
                 document.getElementById('captureBtn').disabled = true;
 
-                const result = await Tesseract.recognize(canvas, 'eng', {
-                    logger: function (m) {
-                        if (m.status === 'recognizing text') {
-                            const progress = Math.round(m.progress * 100);
-                            showProgress(progress);
-                            updateStatus(`Processing: ${progress}%`, 'info');
-                        }
+                // Convert canvas to Blob (image file)
+                const blob = await new Promise(resolve =>
+                    canvas.toBlob(resolve, 'image/png')
+                );
+
+                const formData = new FormData();
+                formData.append('file', blob, 'scan.png');
+
+                // updateStatus('Sending fetch...', 'info');
+
+                // Make fetch call to FastAPI
+                const response = await fetch(
+                    `http://${window.location.href.split("http://")[1].split("/")[0].split(":")[0]}:8000/scan-menu`,
+                    {
+                        method: 'POST',
+                        body: formData
                     }
-                });
+                );
+
+                // updateStatus(`response: ${response}`, 'info');
+
+                const data = await response.json();
+                console.log(data)
+
+                // updateStatus(`data: ${data}`, 'info');
 
                 hideProgress();
                 showSpinner(false);
                 document.getElementById('captureBtn').disabled = false;
 
-                const detectedText = result.data.text.trim();
-
-                if (detectedText) {
+                if (data.success && data.raw_text.trim()) {
                     updateStatus('Text detected successfully', 'success');
-                    displayResults(detectedText, result.data);
+                    displayResults(data);  // You can access full response here
                 } else {
                     updateStatus('No text detected', 'error');
                     document.getElementById('results').textContent = 'No text found. Try adjusting the camera angle or lighting.';
@@ -556,23 +570,19 @@
                 showSpinner(false);
                 document.getElementById('captureBtn').disabled = false;
                 document.getElementById('downloadBtn').disabled = false;
-                updateStatus('Scanning failed', 'error');
+                updateStatus(`Scanning failed: ${error}`, 'error');
                 console.error('OCR Error:', error);
             }
         }
 
-        function displayResults(text, data) {
+        function displayResults(data) {
+            let output = "";
             const resultsDiv = document.getElementById('results');
 
-            let output = `${text}\n\n`;
-            output += `Confidence: ${Math.round(data.confidence)}%`;
-
-            if (data.words && data.words.length > 0) {
-                const validWords = data.words.filter(word => word.text.trim());
-                if (validWords.length > 0) {
-                    output += `\n\nWords found: ${validWords.length}`;
-                }
-            }
+            data.extracted_text.map(text => {
+                console.log(output)
+                output += `Text: ${text.content}, Confidence: ${text.confidence}\n\n`
+            })
 
             resultsDiv.textContent = output;
         }
