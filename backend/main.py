@@ -4,18 +4,27 @@ import time
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentRequest
 from azure.core.credentials import AzureKeyCredential
-from pydantic import BaseModel
-from typing import List, Optional
+from pathlib import Path
+
+from backend.models import ExtractedText, MenuScanResult
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Menu Scanner API", version="1.0.0")
+
+BACKEND_DIR = Path(__file__).resolve().parent
+
+app.mount(
+    "/static", StaticFiles(directory=f"{BACKEND_DIR}\\frontend\\static"), name="static")
+
 
 # Add CORS middleware for frontend integration
 app.add_middleware(
@@ -39,21 +48,10 @@ document_intelligence_client = DocumentIntelligenceClient(
     credential=AzureKeyCredential(AZURE_DOCUMENT_INTELLIGENCE_KEY)
 )
 
-# Response models
 
-
-class ExtractedText(BaseModel):
-    content: str
-    confidence: Optional[float] = None
-    bounding_box: Optional[List[float]] = None
-
-
-class MenuScanResult(BaseModel):
-    extracted_text: List[ExtractedText]
-    raw_text: str
-    processing_time_ms: int
-    success: bool
-    error_message: Optional[str] = None
+@app.get("/")
+def read_index():
+    return FileResponse(f"{BACKEND_DIR}\\frontend\\index.html")
 
 
 @app.post("/scan-menu", response_model=MenuScanResult)
@@ -157,13 +155,3 @@ async def scan_menu_item(file: UploadFile = File(...)):
             success=False,
             error_message=error_message
         )
-
-
-#  uvicorn backend:app --host 0.0.0.0 --port 8000 --reload
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
-
-
-# curl -X 'POST' 'http://161.97.127.38:100/api/v1/chats/recommend-promotion' -H 'accept: application/json' -H 'Authorization: Bearer <access-token>' -H 'Content-Type: application/json' -d '{"prompt": "string", "llm": "OPENAI", "chat_history": [], "store_ids": [], "stream": false}'
