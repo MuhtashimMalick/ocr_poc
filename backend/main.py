@@ -12,7 +12,8 @@ from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentR
 from azure.core.credentials import AzureKeyCredential
 from pathlib import Path
 
-from backend.models import ExtractedText, MenuScanResult
+# from backend.models import ExtractedText, MenuScanResult
+from .models import ExtractedText, MenuScanResult
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
