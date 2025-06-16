@@ -49,7 +49,7 @@ document_intelligence_client = DocumentIntelligenceClient(
 
 @app.get("/")
 def read_index():
-    return FileResponse(f"{BACKEND_DIR}\\frontend\\index.html")
+    return FileResponse(BACKEND_DIR.joinpath("frontend", "index.html"))
 
 
 @app.post("/scan-menu", response_model=MenuScanResult)
