@@ -23,9 +23,6 @@ app = FastAPI(title="Menu Scanner API", version="1.0.0")
 
 BACKEND_DIR = Path(__file__).resolve().parent
 
-app.mount(
-    "/static", StaticFiles(directory=f"{BACKEND_DIR}\\frontend\\static"), name="static")
-
 
 # Add CORS middleware for frontend integration
 app.add_middleware(
