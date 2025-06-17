@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OCR Text Scanner</title>
-    <script src="static/js/tesseract.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -536,10 +535,20 @@
                 formData.append('file', blob, 'scan.png');
 
                 // updateStatus('Sending fetch...', 'info');
+                const hostname = window.location.hostname;
+                let backendUrl;
+
+                if (hostname === "localhost") {
+                    backendUrl = "http://localhost:8000";
+                } else if (hostname.startsWith("192.168.")) {
+                    backendUrl = "http://192.168.1.6:8000"; // or dynamically use hostname + port if needed
+                } else {
+                    backendUrl = "https://ocrpoc-production.up.railway.app";
+                }
 
                 // Make fetch call to FastAPI
                 const response = await fetch(
-                    `http://${window.location.href.split("http://")[1].split("/")[0].split(":")[0]}:8000/scan-menu`,
+                    `${backendUrl}/scan-menu`,
                     {
                         method: 'POST',
                         body: formData
@@ -581,7 +590,7 @@
 
             data.extracted_text.map(text => {
                 console.log(output)
-                output += `Text: ${text.content}, Confidence: ${text.confidence}\n\n`
+                output += `Text: ${text.content} (${(text.confidence * 100).toFixed(1) + '%'})\n\n`
             })
 
             resultsDiv.textContent = output;
