@@ -4,15 +4,15 @@ import time
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentRequest
 from azure.core.credentials import AzureKeyCredential
 from pathlib import Path
+from google.cloud import vision
+from google.oauth2 import service_account
 
-# from backend.models import ExtractedText, MenuScanResult
 from backend.models import ExtractedText, MenuScanResult
 
 # Configure logging
@@ -33,18 +33,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Azure Document Intelligence configuration
 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT = os.getenv("DOC_AI_ENDPOINT")
 AZURE_DOCUMENT_INTELLIGENCE_KEY = os.getenv("DOC_AI_KEY")
+GOOGLE_VISION_CREDENTIALS = {
+    "type": os.environ.get("TYPE"),
+    "project_id": os.environ.get("PROJECT_ID"),
+    "private_key_id": os.environ.get("PRIVATE_KEY_ID"),
+    # Handle escaped newlines
+    "private_key": os.environ.get("PRIVATE_KEY").replace("\\n", "\n"),
+    "client_email": os.environ.get("CLIENT_EMAIL"),
+    "client_id": os.environ.get("CLIENT_ID"),
+    "auth_uri": os.environ.get("AUTH_URI"),
+    "token_uri": os.environ.get("TOKEN_URI"),
+    "auth_provider_x509_cert_url": os.environ.get("AUTH_PROVIDER_X509_CERT_URL"),
+    "client_x509_cert_url": os.environ.get("CLIENT_X509_CERT_URL"),
+    "universe_domain": os.environ.get("UNIVERSE_DOMAIN")
+}
 
 if not AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT or not AZURE_DOCUMENT_INTELLIGENCE_KEY:
     raise ValueError(
         "Azure Document Intelligence credentials not found in environment variables")
+if not GOOGLE_VISION_CREDENTIALS:
+    raise ValueError(
+        "Google vision credentials not found in environment variables")
+
 
 document_intelligence_client = DocumentIntelligenceClient(
     endpoint=AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT,
     credential=AzureKeyCredential(AZURE_DOCUMENT_INTELLIGENCE_KEY)
 )
+
+credentials = service_account.Credentials.from_service_account_info(
+    GOOGLE_VISION_CREDENTIALS)
+google_vision_client = vision.ImageAnnotatorClient(credentials=credentials)
 
 
 @app.get("/")
@@ -75,35 +96,37 @@ async def scan_menu_item(file: UploadFile = File(...)):
         logger.info(
             f"Processing image: {file.filename}, Size: {len(file_content)} bytes")
 
-        # Use the Read API (prebuilt-read model) for text extraction
-        # Following the official Azure sample pattern
+        extracted_texts = []
+        raw_text_parts = []
+
+        image = vision.Image(content=file_content)
+
+        response = google_vision_client.text_detection(image=image)
+        texts = response.text_annotations
+
+        for text in texts:
+            extracted_texts.append(ExtractedText(
+                content=text.description,
+            ))
+
         poller = document_intelligence_client.begin_analyze_document(
             model_id="prebuilt-read",
             body=AnalyzeDocumentRequest(bytes_source=file_content)
         )
 
-        # Wait for the analysis to complete
         result: AnalyzeResult = poller.result()
-
-        # Extract text with confidence scores and bounding boxes
-        extracted_texts = []
-        raw_text_parts = []
 
         if result.pages:
             for page in result.pages:
                 if page.lines:
                     for line in page.lines:
-                        # Extract text content
                         text_content = line.content
                         raw_text_parts.append(text_content)
 
-                        # Get confidence score (lines don't have confidence, but words do)
-                        # We'll calculate average confidence from words in this line
                         line_confidence = None
                         if page.words:
                             line_words = []
                             for word in page.words:
-                                # Check if word belongs to this line
                                 if any(word.span.offset >= span.offset and
                                        (word.span.offset +
                                         word.span.length) <= (span.offset + span.length)
@@ -114,16 +137,9 @@ async def scan_menu_item(file: UploadFile = File(...)):
                                 line_confidence = sum(
                                     word.confidence for word in line_words if word.confidence) / len(line_words)
 
-                        # Get bounding box coordinates
-                        bounding_box = None
-                        # if hasattr(line, 'polygon') and line.polygon:
-                        #     bounding_box = [
-                        #         coord for point in line.polygon for coord in [point.x, point.y]]
-
                         extracted_texts.append(ExtractedText(
                             content=text_content,
                             confidence=line_confidence,
-                            bounding_box=bounding_box
                         ))
 
         # Combine all text
