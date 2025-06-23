@@ -5,7 +5,6 @@ from typing import List, Optional
 class ExtractedText(BaseModel):
     content: str
     confidence: Optional[float] = None
-    bounding_box: Optional[List[float]] = None
 
 
 class MenuScanResult(BaseModel):
